@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Target Scoring</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-2xl font-bold mb-4">Target Scoring</h1>
+
+    <!-- Video Feed Container -->
+    <div class="relative w-full max-w-md">
+        <video id="camera" class="w-full rounded-lg shadow-lg" autoplay></video>
+        <button onclick="switchCamera()" class="absolute top-2 right-2 bg-white text-gray-700 px-3 py-1 rounded shadow-md text-sm">🔄 Switch</button>
+    </div>
+
+    <!-- Capture & Upload Controls -->
+    <div class="mt-4 flex gap-3">
+        <button onclick="captureImage()" class="bg-blue-500 text-white px-4 py-2 rounded shadow-md hover:bg-blue-600">📸 Capture</button>
+        <button onclick="uploadImage()" class="bg-green-500 text-white px-4 py-2 rounded shadow-md hover:bg-green-600">⬆️ Upload</button>
+    </div>
+
+    <!-- Image Display (Replaces Captured Image with Output) -->
+    <canvas id="canvas" class="hidden"></canvas>
+    <img id="imageDisplay" class="max-w-xs mt-4 hidden rounded-lg shadow-lg" />
+
+    <!-- Score & Running Total -->
+    <p id="score" class="text-lg font-semibold mt-4"></p>
+    <div class="mt-4 w-full max-w-md p-4 bg-white shadow-lg rounded-lg">
+        <h2 class="text-lg font-semibold">Score History</h2>
+        <ul id="scoreHistory" class="list-none text-gray-700"></ul>
+        <p class="font-bold mt-2">Total: <span id="totalScore">0</span></p>
+    </div>
+
+    <script>
+        const video = document.getElementById("camera");
+        const canvas = document.getElementById("canvas");
+        const imageDisplay = document.getElementById("imageDisplay");
+        const scoreHistoryList = document.getElementById("scoreHistory");
+        const totalScoreElement = document.getElementById("totalScore");
+
+        let currentFacingMode = "environment";
+        let currentStream = null;
+        let totalScore = 0;
+        let scores = [];
+
+        async function startCamera(facingMode) {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            try {
+                const constraints = { video: { facingMode } };
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+            } catch (error) {
+                console.error("Camera error:", error);
+            }
+        }
+
+        function switchCamera() {
+            currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+            startCamera(currentFacingMode);
+        }
+
+        startCamera(currentFacingMode);
+
+        function captureImage() {
+            const ctx = canvas.getContext("2d");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            imageDisplay.src = canvas.toDataURL("image/png");
+            imageDisplay.classList.remove("hidden");
+        }
+
+        function uploadImage() {
+            canvas.toBlob(blob => {
+                let formData = new FormData();
+                formData.append("file", blob, "capture.png");
+
+                fetch("/upload", {
+                    method: "POST",
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.score !== null) {
+                        document.getElementById("score").innerText = "Score: " + data.score;
+                        
+                        // Add score to history
+                        scores.push(data.score);
+                        updateScoreHistory();
+
+                        // Update total score
+                        totalScore += data.score;
+                        totalScoreElement.innerText = totalScore;
+
+                        // Replace captured image with processed output
+                        imageDisplay.src = "/uploads/output.png?" + new Date().getTime();
+                    } else {
+                        document.getElementById("score").innerText = "No valid shot detected.";
+                    }
+                })
+                .catch(error => console.error("Error:", error));
+            }, "image/png");
+        }
+
+        function updateScoreHistory() {
+            scoreHistoryList.innerHTML = "";
+            totalScore = 0;
+
+            scores.forEach((score, index) => {
+                totalScore += score;
+                const li = document.createElement("li");
+                li.classList.add("flex", "justify-between", "items-center", "border-b", "py-2");
+
+                li.innerHTML = `
+                    <span class="font-medium">#${index + 1}: ${score}</span>
+                    <button onclick="removeScore(${index})" class="text-red-500 hover:text-red-700">
+                        🗑️
+                    </button>
+                `;
+
+                scoreHistoryList.appendChild(li);
+            });
+
+            totalScoreElement.innerText = totalScore;
+        }
+
+        function removeScore(index) {
+            totalScore -= scores[index];
+            scores.splice(index, 1);
+            updateScoreHistory();
+        }
+    </script>
+</body>
+</html>
+
