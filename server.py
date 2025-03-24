@@ -16,13 +16,9 @@ def calculate_score(reference_circle, bullet_circle):
         return 0  # Return 0 if radius is invalid
 
     derived_milli = reference_circle[2] / reference_radius_mm
-    print(f"Derived millimeter scaling factor: {derived_milli}")
-    
-    print(f"bulletx: {bullet_circle[0]}, refx: {reference_circle[0]}")
-    print(f"bullety: {bullet_circle[1]}, refy: {reference_circle[1]}")
+
     # Ensure that the calculated distance is not too large or negative
     dist = np.sqrt((bullet_circle[0] - reference_circle[0]) * (bullet_circle[0] - reference_circle[0]) + (bullet_circle[1] - reference_circle[1]) * (bullet_circle[1] - reference_circle[1]))
-    print(f"Distance between circles: {dist}")
     
     # Apply a threshold for distance to prevent overflow
     max_dist = 1000  # You can adjust this threshold based on expected distances
@@ -35,9 +31,9 @@ def calculate_score(reference_circle, bullet_circle):
 def process_image(image_path, dp, minDist, param1, param2, minRadius, maxRadius):
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
     original_height, original_width = image.shape[:2]
-    scale_factor = 640 / float(original_width)
+    scale_factor = 1024 / float(original_width)
     target_height = int(original_height * scale_factor)
-    resized_image = cv2.resize(image, (640, target_height))
+    resized_image = cv2.resize(image, (1024, target_height))
 
     gray = cv2.cvtColor(resized_image, cv2.COLOR_BGR2GRAY)
     blurred = cv2.medianBlur(gray, 25)

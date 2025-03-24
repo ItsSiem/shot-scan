@@ -14,12 +14,13 @@
     <div class="relative w-full max-w-md">
         <video id="camera" class="w-full rounded-lg shadow-lg" autoplay></video>
         <button onclick="switchCamera()" class="absolute top-2 right-2 bg-white text-gray-700 px-3 py-1 rounded shadow-md text-sm">🔄 Switch</button>
+	<button onclick="toggleFlash()" id="flashButton" class="absolute bottom-2 right-2 bg-white text-gray-700 px-3 py-1 rounded shadow-md text-sm">⚡ Flash</button>
     </div>
 
     <!-- Capture & Upload Controls -->
     <div class="mt-4 flex gap-3">
         <button onclick="captureImage()" class="bg-blue-500 text-white px-4 py-2 rounded shadow-md hover:bg-blue-600">📸 Capture</button>
-        <button onclick="uploadImage()" class="bg-green-500 text-white px-4 py-2 rounded shadow-md hover:bg-green-600">⬆️ Upload</button>
+        <button onclick="updateImageWithParams()" class="bg-green-500 text-white px-4 py-2 rounded shadow-md hover:bg-green-600">⬆️ Upload</button>
     </div>
 
     <!-- Image Display (Replaces Captured Image with Output) -->
@@ -34,24 +35,68 @@
         <p class="font-bold mt-2">Total: <span id="totalScore">0</span></p>
     </div>
 
+    <!-- Sliders for Hough Circle Parameters -->
+    <div id="sliders" class="hidden mt-4 p-4 bg-white shadow-lg rounded-lg w-full max-w-md">
+        <h2 class="text-lg font-semibold mb-4">Adjust Detection Parameters</h2>
+        <div>
+            <label for="dp" class="block text-sm font-medium">dp (Inverse ratio of accumulator resolution)</label>
+            <input type="range" id="dp" min="0.1" max="5" value="1" class="w-full">
+            <span id="dpValue" class="block text-sm">1</span>
+        </div>
+        <div class="mt-4">
+            <label for="minDist" class="block text-sm font-medium">minDist (Minimum distance between detected centers)</label>
+            <input type="range" id="minDist" min="1" max="100" value="20" class="w-full">
+            <span id="minDistValue" class="block text-sm">20</span>
+        </div>
+        <div class="mt-4">
+            <label for="param1" class="block text-sm font-medium">param1 (Edge detection threshold)</label>
+            <input type="range" id="param1" min="1" max="200" value="100" class="w-full">
+            <span id="param1Value" class="block text-sm">100</span>
+        </div>
+        <div class="mt-4">
+            <label for="param2" class="block text-sm font-medium">param2 (Center detection threshold)</label>
+            <input type="range" id="param2" min="1" max="200" value="100" class="w-full">
+            <span id="param2Value" class="block text-sm">100</span>
+        </div>
+        <div class="mt-4">
+            <label for="minRadius" class="block text-sm font-medium">minRadius (Minimum radius of circles to detect)</label>
+            <input type="range" id="minRadius" min="1" max="1000" value="10" class="w-full">
+            <span id="minRadiusValue" class="block text-sm">10</span>
+        </div>
+        <div class="mt-4">
+            <label for="maxRadius" class="block text-sm font-medium">maxRadius (Maximum radius of circles to detect)</label>
+            <input type="range" id="maxRadius" min="1" max="1000" value="50" class="w-full">
+            <span id="maxRadiusValue" class="block text-sm">50</span>
+        </div>
+    </div>
+
+    <!-- Button to toggle sliders visibility -->
+    <button onclick="toggleSliders()" class="mt-4 bg-gray-500 text-white px-4 py-2 rounded shadow-md hover:bg-gray-600">
+        Adjust Parameters
+    </button>
+
     <script>
         const video = document.getElementById("camera");
         const canvas = document.getElementById("canvas");
         const imageDisplay = document.getElementById("imageDisplay");
         const scoreHistoryList = document.getElementById("scoreHistory");
         const totalScoreElement = document.getElementById("totalScore");
+        const sliders = document.getElementById("sliders");
 
         let currentFacingMode = "environment";
         let currentStream = null;
         let totalScore = 0;
         let scores = [];
+	let flashEnabled = false;
+        let detectionParams = { dp: 1, minDist: 20, param1: 100, param2: 100, minRadius: 10, maxRadius: 50 };
+	let debounceTimeout;
 
-        async function startCamera(facingMode) {
+	async function startCamera(facingMode) {
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
             try {
-                const constraints = { video: { facingMode } };
+                const constraints = { video: { facingMode, torch: flashEnabled ? true : false } };
                 currentStream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = currentStream;
             } catch (error) {
@@ -61,6 +106,12 @@
 
         function switchCamera() {
             currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+            startCamera(currentFacingMode);
+        }
+
+        function toggleFlash() {
+            flashEnabled = !flashEnabled;
+            flashButton.textContent = flashEnabled ? "⚡ Flash On" : "⚡ Flash Off";
             startCamera(currentFacingMode);
         }
 
@@ -76,10 +127,17 @@
             imageDisplay.classList.remove("hidden");
         }
 
-        function uploadImage() {
+        // This function will be called when sliders are changed
+        function updateImageWithParams() {
             canvas.toBlob(blob => {
                 let formData = new FormData();
                 formData.append("file", blob, "capture.png");
+                formData.append("dp", detectionParams.dp);
+                formData.append("minDist", detectionParams.minDist);
+                formData.append("param1", detectionParams.param1);
+                formData.append("param2", detectionParams.param2);
+                formData.append("minRadius", detectionParams.minRadius);
+                formData.append("maxRadius", detectionParams.maxRadius);
 
                 fetch("/upload", {
                     method: "POST",
@@ -89,7 +147,7 @@
                 .then(data => {
                     if (data.score !== null) {
                         document.getElementById("score").innerText = "Score: " + data.score;
-                        
+
                         // Add score to history
                         scores.push(data.score);
                         updateScoreHistory();
@@ -135,6 +193,46 @@
             scores.splice(index, 1);
             updateScoreHistory();
         }
+
+        function toggleSliders() {
+            sliders.classList.toggle("hidden");
+        }
+
+	function debouncedUpdateImage() {
+            clearTimeout(debounceTimeout);
+            debounceTimeout = setTimeout(updateImageWithParams, 500); // Delay in milliseconds
+        }
+
+	document.getElementById("dp").addEventListener("input", function() {
+            detectionParams.dp = this.value;
+            document.getElementById("dpValue").textContent = this.value;
+            debouncedUpdateImage();  // Update image with debounce
+        });
+        document.getElementById("minDist").addEventListener("input", function() {
+            detectionParams.minDist = this.value;
+            document.getElementById("minDistValue").textContent = this.value;
+            debouncedUpdateImage();  // Update image with debounce
+        });
+        document.getElementById("param1").addEventListener("input", function() {
+            detectionParams.param1 = this.value;
+            document.getElementById("param1Value").textContent = this.value;
+            debouncedUpdateImage();  // Update image with debounce
+        });
+        document.getElementById("param2").addEventListener("input", function() {
+            detectionParams.param2 = this.value;
+            document.getElementById("param2Value").textContent = this.value;
+            debouncedUpdateImage();  // Update image with debounce
+        });
+        document.getElementById("minRadius").addEventListener("input", function() {
+            detectionParams.minRadius = this.value;
+            document.getElementById("minRadiusValue").textContent = this.value;
+            debouncedUpdateImage();  // Update image with debounce
+        });
+        document.getElementById("maxRadius").addEventListener("input", function() {
+            detectionParams.maxRadius = this.value;
+            document.getElementById("maxRadiusValue").textContent = this.value;
+            debouncedUpdateImage();  // Update image with debounce
+	});
     </script>
 </body>
 </html>
