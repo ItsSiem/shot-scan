@@ -10,25 +10,26 @@
 
     <h1 class="text-2xl font-bold mb-4">Shot Scanner</h1>
 
-    <!-- Video Feed Container -->
-    <div class="relative w-full max-w-md">
+    <!-- Camera and Image Display -->
+    <div class="relative w-full max-w-md" id="video-container">
         <video id="camera" class="w-full rounded-lg shadow-lg" autoplay></video>
         <button onclick="switchCamera()" class="absolute top-2 right-2 bg-white text-gray-700 px-3 py-1 rounded shadow-md text-sm">🔄 Switch</button>
-	<button onclick="toggleFlash()" id="flashButton" class="absolute bottom-2 right-2 bg-white text-gray-700 px-3 py-1 rounded shadow-md text-sm">⚡ Flash</button>
+        <button onclick="toggleFlash()" id="flashButton" class="absolute bottom-2 right-2 bg-white text-gray-700 px-3 py-1 rounded shadow-md text-sm">⚡ Flash</button>
     </div>
 
-    <!-- Capture & Upload Controls -->
-    <div class="mt-4 flex gap-3">
-        <button onclick="captureImage()" class="bg-blue-500 text-white px-4 py-2 rounded shadow-md hover:bg-blue-600">📸 Capture</button>
-        <button onclick="updateImageWithParams()" class="bg-green-500 text-white px-4 py-2 rounded shadow-md hover:bg-green-600">⬆️ Upload</button>
-    </div>
-
-    <!-- Image Display (Replaces Captured Image with Output) -->
     <canvas id="canvas" class="hidden"></canvas>
-    <img id="imageDisplay" class="max-w-xs mt-4 hidden rounded-lg shadow-lg" />
+    <img id="imageDisplay" class="w-full max-w-md hidden rounded-lg shadow-lg" />
 
-    <!-- Score & Running Total -->
+    <!-- Controls for Capture, Submit, and Retake -->
+    <div id="controls" class="mt-4 flex gap-3">
+        <button onclick="captureImage()" id="captureButton" class="bg-blue-500 text-white px-4 py-2 rounded shadow-md hover:bg-blue-600">📸 Capture</button>
+        <button onclick="submitScore()" id="submitButton" class="hidden bg-green-500 text-white px-4 py-2 rounded shadow-md hover:bg-green-600">✅ Submit</button>
+        <button onclick="retakeImage()" id="retakeButton" class="hidden bg-red-500 text-white px-4 py-2 rounded shadow-md hover:bg-red-600">🔄 Retake</button>
+    </div>
+
     <p id="score" class="text-lg font-semibold mt-4"></p>
+
+    <!-- Running Total -->
     <div class="mt-4 w-full max-w-md p-4 bg-white shadow-lg rounded-lg">
         <h2 class="text-lg font-semibold">Score History</h2>
         <ul id="scoreHistory" class="list-none text-gray-700"></ul>
@@ -77,11 +78,15 @@
 
     <script>
         const video = document.getElementById("camera");
+	const videoContainer = document.getElementById("video-container");
         const canvas = document.getElementById("canvas");
         const imageDisplay = document.getElementById("imageDisplay");
         const scoreHistoryList = document.getElementById("scoreHistory");
         const totalScoreElement = document.getElementById("totalScore");
         const sliders = document.getElementById("sliders");
+	const captureButton = document.getElementById("captureButton");
+        const submitButton = document.getElementById("submitButton");
+        const retakeButton = document.getElementById("retakeButton");
 
         let currentFacingMode = "environment";
         let currentStream = null;
@@ -90,6 +95,7 @@
 	let flashEnabled = false;
         let detectionParams = { dp: 1, minDist: 1, param1: 35, param2: 15, minRadius: 10, maxRadius: 800 };
 	let debounceTimeout;
+	let score;
 
 	async function startCamera(facingMode) {
             if (currentStream) {
@@ -117,7 +123,7 @@
 
         startCamera(currentFacingMode);
 
-        function captureImage() {
+	function captureImage() {
             const ctx = canvas.getContext("2d");
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -125,6 +131,20 @@
 
             imageDisplay.src = canvas.toDataURL("image/png");
             imageDisplay.classList.remove("hidden");
+	    videoContainer.classList.add("hidden");
+            captureButton.classList.add("hidden");
+            submitButton.classList.remove("hidden");
+            retakeButton.classList.remove("hidden");
+
+	    updateImageWithParams();
+        }
+
+	function retakeImage() {
+            imageDisplay.classList.add("hidden");
+	    videoContainer.classList.remove("hidden");
+            captureButton.classList.remove("hidden");
+            submitButton.classList.add("hidden");
+            retakeButton.classList.add("hidden");
         }
 
         // This function will be called when sliders are changed
@@ -147,19 +167,13 @@
                 .then(data => {
                     if (data.score !== null) {
                         document.getElementById("score").innerText = "Score: " + data.score;
-
-                        // Add score to history
-                        scores.push(data.score);
-                        updateScoreHistory();
-
-                        // Update total score
-                        totalScore += data.score;
-                        totalScoreElement.innerText = totalScore;
+			score = data.score;
 
                         // Replace captured image with processed output
                         imageDisplay.src = "/uploads/output.png?" + new Date().getTime();
                     } else {
                         document.getElementById("score").innerText = "No valid shot detected.";
+			score = undefined;
                     }
                 })
                 .catch(error => console.error("Error:", error));
@@ -202,6 +216,14 @@
             clearTimeout(debounceTimeout);
             debounceTimeout = setTimeout(updateImageWithParams, 500); // Delay in milliseconds
         }
+
+	function submitScore() {
+		// Add score to history
+		scores.push(score);
+		updateScoreHistory();
+		retakeImage();
+	}
+
 
 	document.getElementById("dp").addEventListener("input", function() {
             detectionParams.dp = this.value;
